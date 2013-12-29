@@ -99,6 +99,8 @@ static void radioInit()
 #pragma vector=PORT1_VECTOR
 __interrupt void PORT1_HOOK(void)
 {
+	P1OUT |= BIT6;
+
 	if (P1IFG & BIT0)
 	{
 		g_interruptSource |= INT_SRC_RADIO_IRQ;
@@ -171,12 +173,15 @@ uint8_t halSpiTransfer(uint8_t data)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR_HOOK(void)
 {
+	P1OUT |= BIT6;
+
 	// READ VOLATILE
 	uint16_t currentMillis = g_timerMillisCounter;
 
 	uint16_t incrementedMillis = currentMillis + g_timerIntervalMillis;
 	if (incrementedMillis >= currentMillis)
 	{
+		// WRITE VOLATILE
 		g_timerMillisCounter = incrementedMillis;
 	}
 	else
@@ -189,14 +194,23 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
 	LPM3_EXIT;
 }
 
+static void nullTimerHandler(uint16_t ignored)
+{
+}
+
+static void nullHandler()
+{
+
+}
+
 void halSetTimerCallback(TimerHandler cb)
 {
-	g_timerCB = cb;
+	g_timerCB = cb ? cb : nullTimerHandler;
 }
 
 void halSetRadioIRQCallback(EventHandler cb)
 {
-	g_radioIRQCB = cb;
+	g_radioIRQCB = cb ? cb : nullHandler;
 }
 
 void halMain(EventHandler initCB)
@@ -216,30 +230,31 @@ void halMain(EventHandler initCB)
 		__disable_interrupt();
 
 		uint8_t interruptSourceCopy = g_interruptSource;
-		g_interruptSource = 0;
 		uint16_t deltaMillis = g_timerMillisCounter;
+		g_interruptSource = 0;
 		g_timerMillisCounter = 0;
 
-		if (interruptSourceCopy == 0)
-		{
-			// Enter LPM3 with interrupts enabled
-			_bis_SR_register(LPM3_bits | GIE);
-
-			// ...Woke up from LPM3...
-		}
-		else
+		if (interruptSourceCopy)
 		{
 			__enable_interrupt();
 
-			if ((interruptSourceCopy & INT_SRC_TIMER) && g_timerCB)
+			if (interruptSourceCopy & INT_SRC_TIMER)
 			{
 				(g_timerCB)(deltaMillis);
 			}
 
-			if ((interruptSourceCopy & INT_SRC_RADIO_IRQ) && g_radioIRQCB)
+			if (interruptSourceCopy & INT_SRC_RADIO_IRQ)
 			{
 				(g_radioIRQCB)();
 			}
+		}
+		else
+		{
+			P1OUT &= ~BIT6;
+			// Enter LPM3 with interrupts enabled
+			_bis_SR_register(LPM3_bits | GIE);
+
+			// ...Woke up from LPM3...
 		}
 
 		// TODO: ADC complete IRQ, etc.
