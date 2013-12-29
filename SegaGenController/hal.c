@@ -58,7 +58,9 @@ static void clockInit()
 
     // BCSCTL3
     // Set ACLK to use VLO (~12 kHz)
-    BCSCTL3 = LFXT1S_2 | XCAP_1;
+    // Note: we especially want to set XCAP=00 so no extra
+    // capacitance is seen on the button pins.
+    BCSCTL3 = LFXT1S_2;
 }
 
 static void gpioInit()
@@ -87,10 +89,6 @@ static void gpioInit()
     P2OUT = 0;
     P2SEL = P2SEL2 = 0;
     P2REN = 0xFF;
-
-    // Disable extra capacitance on XIN/XOUT pins (P2.6/P2.7)
-    // since we don't have a watch crystal connected anyway (these are button input pins)
-    BCSCTL3 &= ~(XCAP0 | XCAP1);
 
     // Port 3
     // P3.0: CHAN0: Input
