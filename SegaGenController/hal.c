@@ -1,13 +1,21 @@
 #include "hal.h"
 
-#define INT_SRC_TIMER       0x1
-#define INT_SRC_RADIO_IRQ   0x2
+#define INT_SRC_BUTTON_CHANGE   0x1
+#define INT_SRC_TIMER           0x2
+#define INT_SRC_RADIO_IRQ       0x4
 
 static volatile uint8_t g_interruptSource = 0;
 static volatile uint16_t g_timerMillisCounter = 0;
 static TimerHandler g_timerCB = 0;
 static EventHandler g_radioIRQCB = 0;
+static EventHandler g_buttonsCB = 0;
 static int g_timerIntervalMillis = 0;
+static int g_timerDivider = 0;
+static int g_timerDivCounter = 0;
+// Goes along with an INT_SRC_BUTTON_CHANGE to notify us of what the IRQ saw
+static volatile uint8_t g_lastButtons = 0;
+// Our captured copy of this (updated once per "main thread" interrupt processing cycle)
+static uint8_t g_lastButtonsCapture = 0;
 
 static void watchdogInit()
 {
@@ -110,8 +118,6 @@ static void radioInit()
 #pragma vector=PORT1_VECTOR
 __interrupt void PORT1_HOOK(void)
 {
-    P1OUT |= BIT6;
-
     if (P1IFG & BIT0)
     {
         g_interruptSource |= INT_SRC_RADIO_IRQ;
@@ -121,7 +127,7 @@ __interrupt void PORT1_HOOK(void)
     P1IFG = 0;
 }
 
-uint8_t halReadButtons()
+uint8_t pollButtons()
 {
     // Turn on pull-up registers
     P2OUT = 0xFF;
@@ -135,6 +141,11 @@ uint8_t halReadButtons()
     // Change pull-ups to pull-downs
     P2OUT = 0x00;
     return ~data;
+}
+
+uint8_t halReadButtons()
+{
+    return g_lastButtonsCapture;
 }
 
 uint8_t halReadDIP()
@@ -171,11 +182,13 @@ void halPulseRadioCE()
     P1OUT &= ~BIT5;
 }
 
-void halSetTimerInterval(int msec)
+void halSetTimerInterval(int msec, int divider)
 {
     halBeginNoInterrupts();
 
     g_timerIntervalMillis = msec;
+    g_timerDivider = divider;
+    g_timerDivCounter = divider;
 
     // Stop the timer, clear interrupt flag
     TA0CTL &= ~(MC1 | MC0);
@@ -206,25 +219,38 @@ uint8_t halSpiTransfer(uint8_t data)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR_HOOK(void)
 {
-    P1OUT |= BIT6;
-
-    // READ VOLATILE
-    uint16_t currentMillis = g_timerMillisCounter;
-
-    uint16_t incrementedMillis = currentMillis + g_timerIntervalMillis;
-    if (incrementedMillis >= currentMillis)
+    uint8_t buttons = pollButtons();
+    if (buttons != g_lastButtons)
     {
-        // WRITE VOLATILE
-        g_timerMillisCounter = incrementedMillis;
-    }
-    else
-    {
-        // WRITE VOLATILE
-        g_timerMillisCounter = 0xFFFF;
+        g_lastButtons = buttons;
+        g_interruptSource |= INT_SRC_BUTTON_CHANGE;
+        LPM3_EXIT;
+        // note, this doesn't return! it keeps going to the next bit.
     }
 
-    g_interruptSource |= INT_SRC_TIMER;
-    LPM3_EXIT;
+    g_timerDivCounter--;
+    if (g_timerDivCounter <= 0)
+    {
+        g_timerDivCounter = g_timerDivider;
+
+        // READ VOLATILE
+        uint16_t currentMillis = g_timerMillisCounter;
+
+        uint16_t incrementedMillis = currentMillis + g_timerIntervalMillis;
+        if (incrementedMillis >= currentMillis)
+        {
+            // WRITE VOLATILE
+            g_timerMillisCounter = incrementedMillis;
+        }
+        else
+        {
+            // WRITE VOLATILE
+            g_timerMillisCounter = 0xFFFF;
+        }
+
+        g_interruptSource |= INT_SRC_TIMER;
+        LPM3_EXIT;
+    }
 }
 
 static void nullTimerHandler(uint16_t ignored)
@@ -246,6 +272,11 @@ void halSetRadioIRQCallback(EventHandler cb)
     g_radioIRQCB = cb ? cb : nullHandler;
 }
 
+void halSetButtonChangeCallback(EventHandler cb)
+{
+    g_buttonsCB = cb ? cb : nullHandler;
+}
+
 void halMain(EventHandler initCB)
 {
     watchdogInit();
@@ -253,6 +284,7 @@ void halMain(EventHandler initCB)
     gpioInit();
     spiInit();
     radioInit();
+    g_lastButtons = g_lastButtonsCapture = pollButtons();
 
     (initCB)();
 
@@ -264,12 +296,18 @@ void halMain(EventHandler initCB)
 
         uint8_t interruptSourceCopy = g_interruptSource;
         uint16_t deltaMillis = g_timerMillisCounter;
+        g_lastButtonsCapture = g_lastButtons;
         g_interruptSource = 0;
         g_timerMillisCounter = 0;
 
         if (interruptSourceCopy)
         {
             __enable_interrupt();
+
+            if (interruptSourceCopy & INT_SRC_BUTTON_CHANGE)
+            {
+                (g_buttonsCB)();
+            }
 
             if (interruptSourceCopy & INT_SRC_TIMER)
             {
@@ -280,10 +318,10 @@ void halMain(EventHandler initCB)
             {
                 (g_radioIRQCB)();
             }
+
         }
         else
         {
-            P1OUT &= ~BIT6;
             // Enter LPM3 with interrupts enabled
             _bis_SR_register(LPM3_bits | GIE);
 

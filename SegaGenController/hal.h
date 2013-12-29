@@ -20,8 +20,13 @@ uint8_t halSpiTransfer(uint8_t mosi);
 
 void halPulseRadioCE();
 
-void halSetTimerInterval(int msec);
+// keyPollInterval: milliseconds between key polls.
+// divider: number of key polls before a timer callback is fired.
+// E.g., for a 1ms key poll interval and divider=10, keys are polled at 1000 Hz and a timer
+// callback is called at 100 Hz.
+void halSetTimer(int keyPollIntervalMillis, int divider);
 void halSetTimerCallback(TimerHandler cb);
+void halSetButtonChangeCallback(EventHandler cb);
 
 void halSetRadioIRQCallback(EventHandler cb);
 

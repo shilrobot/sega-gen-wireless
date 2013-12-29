@@ -176,7 +176,7 @@ void sleepMode_begin()
     halBeginNoInterrupts();
 
     radioSleep();
-    halSetTimerInterval(250);
+    halSetTimerInterval(250, 1);
     halSetRadioIRQCallback(0);
     clearTasks();
     addTask(&sleepMode_pollButtons, 250);
@@ -184,17 +184,18 @@ void sleepMode_begin()
     halEndNoInterrupts();
 }
 
-int awakeMode_pollButtons()
+void awakeMode_onButtonChange()
 {
-    //P1OUT ^= BIT6;
     uint8_t buttons = halReadButtons();
-    if (!buttons)
-    {
-        sleepMode_begin();
-        return 1;
-    }
 
-    return 0;
+    if(buttons)
+    {
+        P1OUT |= BIT6;
+    }
+    else
+    {
+        P1OUT &= ~BIT6;
+    }
 }
 
 void awakeMode_onRadioIRQ()
@@ -207,18 +208,21 @@ void awakeMode_begin()
     halBeginNoInterrupts();
 
     radioWake();
-    halSetTimerInterval(2);
+    halSetTimerInterval(1, 10);
     halSetRadioIRQCallback(&awakeMode_onRadioIRQ);
+    halSetButtonChangeCallback(&awakeMode_onButtonChange);
     clearTasks();
-    addTask(&awakeMode_pollButtons, 2);
+    //addTask(&awakeMode_pollButtons, 1);
 
     halEndNoInterrupts();
 }
 
 void initCB()
 {
+    // NOTE this is called w/ interrupts disabled
+
     halSetTimerCallback(&runTasks);
-    sleepMode_begin();
+    awakeMode_begin();
 }
 
 int main(void)
