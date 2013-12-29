@@ -1,21 +1,30 @@
 #include "hal.h"
 
+// Interrupt source (written to by ISRs to wake up main thread)
 #define INT_SRC_BUTTON_CHANGE   0x1
 #define INT_SRC_TIMER           0x2
 #define INT_SRC_RADIO_IRQ       0x4
 
 static volatile uint8_t g_interruptSource = 0;
-static volatile uint16_t g_timerMillisCounter = 0;
-static TimerHandler g_timerCB = 0;
-static EventHandler g_radioIRQCB = 0;
-static EventHandler g_buttonsCB = 0;
+
+// Timer configuration
 static int g_timerKeyPollInterval = 0;
 static int g_timerDivider = 0;
+
+// Timer tracking
 static int g_timerDivCounter = 0;
+static volatile uint16_t g_timerMillisCounter = 0;
+
+// Key change detection
 // Goes along with an INT_SRC_BUTTON_CHANGE to notify us of what the IRQ saw
 static volatile uint8_t g_lastButtons = 0;
 // Our captured copy of this (updated once per "main thread" interrupt processing cycle)
 static uint8_t g_lastButtonsCapture = 0;
+
+// Callbacks to higher layer
+static TimerHandler g_timerCB = 0;
+static EventHandler g_radioIRQCB = 0;
+static EventHandler g_buttonsCB = 0;
 
 static void watchdogInit()
 {
@@ -196,7 +205,7 @@ void halSetTimerInterval(int keyPollInterval, int divider)
 
     // interrupt when CCR0 is reached.
     // TA0CCR0 = 12 * intervalMillis
-    TA0CCR0 = (msec << 3) + (msec << 2);
+    TA0CCR0 = (keyPollInterval << 3) + (keyPollInterval << 2);
     TA0CCTL0 = CM_0 | CCIE;
     TA0CTL = TASSEL_1 | ID_0 | MC_1;
 

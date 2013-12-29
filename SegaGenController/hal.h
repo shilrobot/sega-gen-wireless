@@ -24,7 +24,7 @@ void halPulseRadioCE();
 // divider: number of key polls before a timer callback is fired.
 // E.g., for a 1ms key poll interval and divider=10, keys are polled at 1000 Hz and a timer
 // callback is called at 100 Hz.
-void halSetTimer(int keyPollIntervalMillis, int divider);
+void halSetTimerInterval(int keyPollIntervalMillis, int divider);
 void halSetTimerCallback(TimerHandler cb);
 void halSetButtonChangeCallback(EventHandler cb);
 void halSetRadioIRQCallback(EventHandler cb);
