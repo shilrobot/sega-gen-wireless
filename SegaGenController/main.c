@@ -137,13 +137,7 @@ void sendPacket()
 
 	radioWriteTXPayload(buf, sizeof(buf));
 
-	// TODO: hal!
-	// Pulse CE
-	// CE LOW
-	P1OUT |= BIT5;
-	halDelayMicroseconds(13); // 10us min pulse width + 25% buffer
-	// CE HIGH
-	P1OUT &= ~BIT5;
+	halPulseRadioCE();
 }
 
 void onRadioIRQ()

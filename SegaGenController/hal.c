@@ -46,8 +46,9 @@ static void clockInit()
 
 static void gpioInit()
 {
-	// TODO: Set up all ports properly
+	// TODO: Set up all ports properly for final config.
 
+	// Port 1
 	// P1.0: IRQ: Input; interrupt on falling edge
 	// P1.1: MISO: Input (P1SEL & P1SEL2 set) - SPI
 	// P1.2: MOSI: Output (P1SEL & P1SEL2 set) - SPI
@@ -56,7 +57,6 @@ static void gpioInit()
 	// P1.5: CE: Output, initially LOW
 	// P1.6: Green LED: Output
 	// P1.7: Unused: Output, initially LOW
-
 	P1DIR = BIT3 | BIT5 | BIT6 | BIT7;
 	P1OUT = BIT3 | BIT6;
 	P1SEL = BIT1 | BIT2 | BIT4;
@@ -64,16 +64,27 @@ static void gpioInit()
 	P1IE = BIT0;
 	P1IES = BIT0;
 
-	// Port 2: buttons.
+	// Port 2: Gamepad buttons
 	// Initially all inputs, with pulldowns enabled.
-	P2DIR = 00;
+	P2DIR = 0;
 	P2OUT = 0;
 	P2SEL = P2SEL2 = 0;
 	P2REN = 0xFF;
 
-	P3DIR = 0xFF;
+	// Port 3
+	// P3.0: CHAN0: Input
+	// P3.1: CHAN1: Input
+	// P3.2: LED: Output (PWM)
+	// P3.3: CHAN2: Input
+	// P3.4: CHAN3: Input
+	// P3.5: NC - output low
+	// P3.6: NC - output low
+	// P3.7: NC - output low
+	// CHANx all have pulldowns enabled by default
+	P3DIR = BIT2 | BIT5 | BIT6 | BIT7;
 	P3OUT = 0;
 	P3SEL = P3SEL2 = 0;
+	P3REN = BIT0 | BIT1 | BIT3 | BIT4;
 }
 
 static void spiInit()
@@ -115,7 +126,7 @@ uint8_t halReadButtons()
 	// Turn on pull-up registers
 	P2OUT = 0xFF;
 
-	// Wait 1 usec
+	// Wait 1 usec for port capacitance to charge through pullups
 	halDelayMicroseconds(1);
 
 	// Read keys
@@ -128,14 +139,36 @@ uint8_t halReadButtons()
 
 uint8_t halReadDIP()
 {
-	// TODO
-	return 0;
+	// Turn on pull-up registers
+	P3OUT = BIT0 | BIT1 | BIT3 | BIT4;
+
+	// Wait 1 usec for port capacitance to charge through pullups
+	halDelayMicroseconds(1);
+
+	// Read keys
+	uint8_t data = P3IN;
+
+	// Change pull-ups back to pull-downs
+	P3OUT &= ~(BIT0 | BIT1 | BIT3 | BIT4);
+
+	// Compute final result.
+	// Must invert bits and then do some shifting.
+	data = ~data;
+	return (data & 0b11) | ((data & 0b11000) >> 3);
 }
 
 uint16_t halReadBatteryVoltage()
 {
-	// TODO
+	// TODO: This.
 	return 4200;
+}
+
+void halPulseRadioCE()
+{
+	P1OUT |= BIT5;
+	halDelayMicroseconds(13); // 10us min pulse width + 25% buffer
+	// CE HIGH
+	P1OUT &= ~BIT5;
 }
 
 void halSetTimerInterval(int msec)

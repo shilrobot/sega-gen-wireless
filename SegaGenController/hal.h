@@ -18,6 +18,8 @@ uint16_t halReadBatteryVoltage();
 
 uint8_t halSpiTransfer(uint8_t mosi);
 
+void halPulseRadioCE();
+
 void halSetTimerInterval(int msec);
 void halSetTimerCallback(TimerHandler cb);
 
