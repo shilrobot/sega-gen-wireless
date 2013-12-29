@@ -88,6 +88,10 @@ static void gpioInit()
     P2SEL = P2SEL2 = 0;
     P2REN = 0xFF;
 
+    // Disable extra capacitance on XIN/XOUT pins (P2.6/P2.7)
+    // since we don't have a watch crystal connected anyway (these are button input pins)
+    BCSCTL3 &= ~(XCAP0 | XCAP1);
+
     // Port 3
     // P3.0: CHAN0: Input
     // P3.1: CHAN1: Input
@@ -147,7 +151,7 @@ uint8_t halReadDIP()
     P3OUT = BIT0 | BIT1 | BIT3 | BIT4;
 
     // Wait 1 usec for port capacitance to charge through pullups
-    halDelayMicroseconds(1);
+    halDelayMicroseconds(2);
 
     // Read keys
     uint8_t data = P3IN;
@@ -215,8 +219,10 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
     // Turn on pull-up registers
     P2OUT = 0xFF;
 
-    // Wait 1 usec for port capacitance to charge through pullups
-    halDelayMicroseconds(1);
+    // Wait 2 usec for port capacitance to charge through pullups
+    // (6 us will do fine. This gives us a lot of margin, without
+    // taking TOO much extra time.)
+    halDelayMicroseconds(2);
 
     // Read keys
     uint8_t buttons = ~P2IN;
