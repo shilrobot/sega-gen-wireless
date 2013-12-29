@@ -27,7 +27,6 @@ void halPulseRadioCE();
 void halSetTimer(int keyPollIntervalMillis, int divider);
 void halSetTimerCallback(TimerHandler cb);
 void halSetButtonChangeCallback(EventHandler cb);
-
 void halSetRadioIRQCallback(EventHandler cb);
 
 #define halDelayMicroseconds(usec) _delay_cycles((usec)*8)

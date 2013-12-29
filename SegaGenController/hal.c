@@ -9,7 +9,7 @@ static volatile uint16_t g_timerMillisCounter = 0;
 static TimerHandler g_timerCB = 0;
 static EventHandler g_radioIRQCB = 0;
 static EventHandler g_buttonsCB = 0;
-static int g_timerIntervalMillis = 0;
+static int g_timerKeyPollInterval = 0;
 static int g_timerDivider = 0;
 static int g_timerDivCounter = 0;
 // Goes along with an INT_SRC_BUTTON_CHANGE to notify us of what the IRQ saw
@@ -182,11 +182,11 @@ void halPulseRadioCE()
     P1OUT &= ~BIT5;
 }
 
-void halSetTimerInterval(int msec, int divider)
+void halSetTimerInterval(int keyPollInterval, int divider)
 {
     halBeginNoInterrupts();
 
-    g_timerIntervalMillis = msec;
+    g_timerKeyPollInterval = keyPollInterval;
     g_timerDivider = divider;
     g_timerDivCounter = divider;
 
@@ -236,7 +236,7 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
         // READ VOLATILE
         uint16_t currentMillis = g_timerMillisCounter;
 
-        uint16_t incrementedMillis = currentMillis + g_timerIntervalMillis;
+        uint16_t incrementedMillis = currentMillis + g_timerKeyPollInterval;
         if (incrementedMillis >= currentMillis)
         {
             // WRITE VOLATILE
