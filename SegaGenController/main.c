@@ -320,7 +320,7 @@ void awakeMode_onRadioIRQ(uint16_t millis)
 
 }
 
-void systemInit()
+void init()
 {
 	watchdogInit();
 	clockInit();
@@ -351,7 +351,7 @@ int main(void)
 {
 	unsigned int i;
 
-	systemInit();
+	init();
 
 	while(1)
 	{

@@ -1,5 +1,9 @@
 #include "radio.h"
-#include "spi.h"
+#include "hal.h"
+
+#define spiBegin halSpiBegin
+#define spiEnd halSpiEnd
+#define spiTransfer halSpiTransfer
 
 uint8_t radioReadRegisterByte(uint8_t reg)
 {
