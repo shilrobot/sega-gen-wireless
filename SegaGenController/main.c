@@ -1,114 +1,59 @@
-#include <msp430.h> 
-#include <stdint.h>
-#include <string.h>
+#include "hal.h"
 #include "radio.h"
-#include "spi.h"
-#include "timer.h"
-#include "interrupt_util.h"
 
-#define CYCLES_PER_USEC 8
-
-volatile uint8_t g_interruptSource = 0;
-
-typedef void (*EventHandler)();
-typedef void (*TimerHandler)(uint16_t delta);
+typedef int (*TaskCallback)(void);
 
 typedef struct _Task
 {
 	uint16_t intervalMillis;
 	uint16_t millisLeft;
-	EventHandler callback;
+	TaskCallback callback;
 } Task;
 
-typedef struct _Mode
+#define MAX_TASKS 4
+
+int g_numTasks;
+Task g_tasks[MAX_TASKS];
+
+void clearTasks()
 {
-	EventHandler onEnter;
-	EventHandler onRadioIRQ;
-	EventHandler onExit;
-	uint8_t numTasks;
-	Task* tasks;
-} Mode;
-
-Mode* g_mode = 0;
-Mode* g_nextMode = 0;
-
-Task g_sleepModeTasks[1];
-Mode g_sleepMode;
-
-Task g_awakeModeTasks[1];
-Mode g_awakeMode;
-
-void watchdogInit()
-{
-	// Stop watchdog timer
-	// Supply password while writing WDTHOLD=1
-	WDTCTL = WDTPW | WDTHOLD;
+	g_numTasks = 0;
 }
 
-void clockInit()
+void addTask(TaskCallback* cb, uint16_t interval)
 {
-	// MCLK, SMCLK are 8 MHz calibrated DCO
-	// ACLK is ~12 kHz VLO
-
-	// BCSCTL2
-	// MCLK comes from COCLK
-	// MCLK divider is 1
-	// SMCLK comes from DCOCLK
-	// SMCLK divider is 1
-	// Use internal DCO resistor (does this even apply?)
-	BCSCTL2 = SELM_0 | DIVM_0;
-
-	// DCOCTL
-	// Set from calibrated 8 MHz settings
-	DCOCTL = 0;
-	BCSCTL1 = CALBC1_8MHZ;
-	DCOCTL = CALDCO_8MHZ;
-
-	// BCSCTL1
-	// Ensure XT2 oscillator is off
-	BCSCTL1 |= XT2OFF;
-
-	// BCSCTL3
-	// Set ACLK to use VLO (~12 kHz)
-	BCSCTL3 = LFXT1S_2 | XCAP_1;
+	if (g_numTasks < MAX_TASKS)
+	{
+		Task* tsk = &g_tasks[g_numTasks];
+		tsk->intervalMillis = interval;
+		tsk->millisLeft = interval;
+		tsk->callback = cb;
+		g_numTasks++;
+	}
 }
 
-void gpioInit()
+int runTasks(Task* tasks, size_t num, uint16_t deltaMillis)
 {
-	// TODO: Set up all ports properly
+	unsigned int i;
+	for (i=0; i < num; ++i)
+	{
+		Task* task = tasks[i];
+		if (task->millisLeft <= deltaMillis)
+		{
+			if(task->callback())
+			{
+				return 1;
+			}
 
-	// P1.0: IRQ: Input; interrupt on falling edge
-	// P1.1: MISO: Input (P1SEL & P1SEL2 set) - SPI
-	// P1.2: MOSI: Output (P1SEL & P1SEL2 set) - SPI
-	// P1.3: CSN: Output, initially HIGH
-	// P1.4: SCK: Output (P1SEL & P1SEL2 set) - SPI
-	// P1.5: CE: Output, initially LOW
-	// P1.6: Green LED: Output
-	// P1.7: Unused: Output, initially LOW
+			task->millisLeft = task->intervalMillis;
+		}
+		else
+		{
+			task->millisLeft -= deltaMillis;
+		}
+	}
 
-	P1DIR = BIT3 | BIT5 | BIT6 | BIT7;
-	P1OUT = BIT3 | BIT6;
-	P1SEL = BIT1 | BIT2 | BIT4;
-	P1SEL2 = BIT1 | BIT2 | BIT4;
-	P1IE = BIT0;
-	P1IES = BIT0;
-
-	// Port 2: buttons.
-	// Initially all inputs, with pulldowns enabled.
-	P2DIR = 00;
-	P2OUT = 0;
-	P2SEL = P2SEL2 = 0;
-	P2REN = 0xFF;
-
-	P3DIR = 0xFF;
-	P3OUT = 0;
-	P3SEL = P3SEL2 = 0;
-}
-
-void radioInit()
-{
-	// Radio power-on reset time: 100 ms w/ 25% extra tolerance
-	_delay_cycles(125000*CYCLES_PER_USEC);
+	return 0;
 }
 
 void radioWake()
@@ -173,7 +118,7 @@ void radioWake()
 
 	// Allow radio a good time to power up
 	// (Tpd2stby)
-	_delay_cycles(5000UL*CYCLES_PER_USEC);
+	halDelayMicroseconds(5000UL);
 }
 
 void radioSleep()
@@ -185,18 +130,6 @@ void radioSleep()
 	radioFlushTX();
 	radioFlushRX();
 	radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
-}
-
-#pragma vector=PORT1_VECTOR
-__interrupt void PORT1_HOOK(void)
-{
-	if (P1IFG & BIT0)
-	{
-		g_interruptSource |= INT_SRC_RADIO_IRQ;
-		LPM3_EXIT;
-	}
-
-	P1IFG = 0;
 }
 
 void sendPacket()
@@ -227,59 +160,6 @@ void onRadioIRQ()
 	radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 }
 
-uint8_t sampleButtons()
-{
-	// Turn on pull-up registers
-	P2OUT = 0xFF;
-
-	// Wait 1 usec
-	__delay_cycles(1*CYCLES_PER_USEC);
-
-	// Read keys
-	uint8_t data = P2IN;
-
-	// Change pull-ups to pull-downs
-	P2OUT = 0x00;
-	return ~data;
-}
-
-void processModeSwitch()
-{
-	if (g_nextMode == 0)
-	{
-		return;
-	}
-
-	if (g_mode != 0 && g_mode->onExit != 0)
-	{
-		g_mode->onExit();
-	}
-
-	g_mode = g_nextMode;
-	g_nextMode = 0;
-
-	unsigned int i;
-	for (i=0; i<g_mode->numTasks; ++i)
-	{
-		g_mode->tasks[i].millisLeft = g_mode->tasks[i].intervalMillis;
-	}
-
-	if (g_mode->onEnter != 0)
-	{
-		(g_mode->onEnter)();
-	}
-}
-
-void sleepMode_onEnter()
-{
-	BEGIN_NO_INTERRUPTS;
-
-	radioSleep();
-	timerSetInterval(250);
-
-	END_NO_INTERRUPTS;
-}
-
 void sleepMode_pollButtons()
 {
 	P1OUT ^= BIT6;
@@ -291,12 +171,15 @@ void sleepMode_pollButtons()
 	}
 }
 
-void awakeMode_onEnter()
+void sleepMode_begin()
 {
 	BEGIN_NO_INTERRUPTS;
 
-	radioWake();
-	timerSetInterval(2);
+	radioSleep();
+	halSetTimerInterval(250);
+	halSetRadioIRQCallback(0);
+	clearTasks();
+	addTask(&sleepMode_pollButtons, 250);
 
 	END_NO_INTERRUPTS;
 }
@@ -309,110 +192,33 @@ void awakeMode_pollButtons()
 	{
 		g_nextMode = &g_sleepMode;
 	}
-//	if(buttons)
-//		P1OUT |= BIT6;
-//	else
-//		P1OUT &= ~BIT6;
 }
 
 void awakeMode_onRadioIRQ(uint16_t millis)
 {
-
+	// TODO
 }
 
-void init()
+void awakeMode_begin()
 {
-	watchdogInit();
-	clockInit();
-	gpioInit();
-	spiInit();
-	radioInit();
+	BEGIN_NO_INTERRUPTS;
 
-	g_sleepMode.onEnter = &sleepMode_onEnter;
-	g_sleepMode.numTasks = 1;
-	g_sleepMode.tasks = &g_sleepModeTasks[0];
-	g_sleepModeTasks[0].intervalMillis = 250;
-	g_sleepModeTasks[0].callback = &sleepMode_pollButtons;
+	radioWake();
+	halSetTimerInterval(2);
+	halSetRadioIRQCallback(&awakeMode_onRadioIRQ);
+	clearTasks();
+	addTask(&awakeMode_pollButtons, 2);
 
-	g_awakeMode.onEnter = &awakeMode_onEnter;
-	g_awakeMode.onRadioIRQ = &awakeMode_onRadioIRQ;
-	g_awakeMode.numTasks = 1;
-	g_awakeMode.tasks = &g_awakeModeTasks[0];
-	g_awakeModeTasks[0].intervalMillis = 100;
-	g_awakeModeTasks[0].callback = &awakeMode_pollButtons;
+	END_NO_INTERRUPTS;
+}
 
-	g_nextMode = &g_sleepMode;
-	processModeSwitch();
-
-	__enable_interrupt();
+void initCB()
+{
+	halSetTimerCallback(&allModes_onTimer);
+	sleepMode_begin();
 }
 
 int main(void)
 {
-	unsigned int i;
-
-	init();
-
-	while(1)
-	{
-		__disable_interrupt();
-
-		uint8_t interruptSourceCopy = g_interruptSource;
-		g_interruptSource = 0;
-		uint16_t deltaMillis = g_timerMillisCounter;
-		g_timerMillisCounter = 0;
-
-		if (interruptSourceCopy == 0)
-		{
-			// Enter LPM3 with interrupts enabled
-			_bis_SR_register(LPM3_bits | GIE);
-
-			// ...Woke up from LPM3...
-		}
-		else
-		{
-			__enable_interrupt();
-
-			if (interruptSourceCopy & INT_SRC_TIMER)
-			{
-				// Update timer tasks
-				for (i = 0; i <g_mode->numTasks; ++i)
-				{
-					Task* tsk = &(g_mode->tasks[i]);
-					if (tsk->millisLeft <= deltaMillis)
-					{
-						tsk->millisLeft = tsk->intervalMillis;
-						(tsk->callback)();
-
-						if (g_nextMode)
-						{
-							break;
-						}
-					}
-					else
-					{
-						tsk->millisLeft -= deltaMillis;
-					}
-				}
-
-				if (g_nextMode)
-				{
-					processModeSwitch();
-				}
-			}
-
-			if ((interruptSourceCopy & INT_SRC_RADIO_IRQ) &&
-				g_mode->onRadioIRQ != 0)
-			{
-				(g_mode->onRadioIRQ)();
-
-				if (g_nextMode)
-				{
-					processModeSwitch();
-				}
-			}
-		}
-
-		// TODO: ADC complete IRQ, etc.
-	}
+	halMain(&initCB);
 }
