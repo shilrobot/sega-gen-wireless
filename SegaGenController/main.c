@@ -12,15 +12,15 @@ typedef struct _Task
 
 #define MAX_TASKS 4
 
-int g_numTasks;
-Task g_tasks[MAX_TASKS];
+static unsigned int g_numTasks;
+static Task g_tasks[MAX_TASKS];
 
 void clearTasks()
 {
 	g_numTasks = 0;
 }
 
-void addTask(TaskCallback* cb, uint16_t interval)
+void addTask(TaskCallback cb, uint16_t interval)
 {
 	if (g_numTasks < MAX_TASKS)
 	{
@@ -32,17 +32,18 @@ void addTask(TaskCallback* cb, uint16_t interval)
 	}
 }
 
-int runTasks(Task* tasks, size_t num, uint16_t deltaMillis)
+void runTasks(uint16_t deltaMillis)
 {
 	unsigned int i;
-	for (i=0; i < num; ++i)
+	for (i=0; i < g_numTasks; ++i)
 	{
-		Task* task = tasks[i];
+		Task* task = &g_tasks[i];
 		if (task->millisLeft <= deltaMillis)
 		{
 			if(task->callback())
 			{
-				return 1;
+				// Terminate early.
+				return;
 			}
 
 			task->millisLeft = task->intervalMillis;
@@ -52,8 +53,6 @@ int runTasks(Task* tasks, size_t num, uint16_t deltaMillis)
 			task->millisLeft -= deltaMillis;
 		}
 	}
-
-	return 0;
 }
 
 void radioWake()
@@ -138,10 +137,11 @@ void sendPacket()
 
 	radioWriteTXPayload(buf, sizeof(buf));
 
+	// TODO: hal!
 	// Pulse CE
 	// CE LOW
 	P1OUT |= BIT5;
-	_delay_cycles(13*CYCLES_PER_USEC); // 10us min pulse width + 25% buffer
+	halDelayMicroseconds(13); // 10us min pulse width + 25% buffer
 	// CE HIGH
 	P1OUT &= ~BIT5;
 }
@@ -160,20 +160,26 @@ void onRadioIRQ()
 	radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 }
 
-void sleepMode_pollButtons()
+void sleepMode_begin();
+void awakeMode_begin();
+
+int sleepMode_pollButtons()
 {
 	P1OUT ^= BIT6;
 
-	uint8_t buttons = sampleButtons();
+	uint8_t buttons = halReadButtons();
 	if (buttons)
 	{
-		g_nextMode = &g_awakeMode;
+		awakeMode_begin();
+		return 1;
 	}
+
+	return 0;
 }
 
 void sleepMode_begin()
 {
-	BEGIN_NO_INTERRUPTS;
+	halBeginNoInterrupts();
 
 	radioSleep();
 	halSetTimerInterval(250);
@@ -181,40 +187,43 @@ void sleepMode_begin()
 	clearTasks();
 	addTask(&sleepMode_pollButtons, 250);
 
-	END_NO_INTERRUPTS;
+	halEndNoInterrupts();
 }
 
-void awakeMode_pollButtons()
+int awakeMode_pollButtons()
 {
 	P1OUT ^= BIT6;
-	uint8_t buttons = sampleButtons();
+	uint8_t buttons = halReadButtons();
 	if (!buttons)
 	{
-		g_nextMode = &g_sleepMode;
+		sleepMode_begin();
+		return 1;
 	}
+
+	return 0;
 }
 
-void awakeMode_onRadioIRQ(uint16_t millis)
+void awakeMode_onRadioIRQ()
 {
 	// TODO
 }
 
 void awakeMode_begin()
 {
-	BEGIN_NO_INTERRUPTS;
+	halBeginNoInterrupts();
 
 	radioWake();
 	halSetTimerInterval(2);
 	halSetRadioIRQCallback(&awakeMode_onRadioIRQ);
 	clearTasks();
-	addTask(&awakeMode_pollButtons, 2);
+	addTask(&awakeMode_pollButtons, 100);
 
-	END_NO_INTERRUPTS;
+	halEndNoInterrupts();
 }
 
 void initCB()
 {
-	halSetTimerCallback(&allModes_onTimer);
+	halSetTimerCallback(&runTasks);
 	sleepMode_begin();
 }
 

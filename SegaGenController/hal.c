@@ -5,8 +5,9 @@
 
 static volatile uint8_t g_interruptSource = 0;
 static volatile uint16_t g_timerMillisCounter = 0;
-static TimerHandler* g_timerCB = 0;
-static EventHandler* g_radioIRQCB = 0;
+static TimerHandler g_timerCB = 0;
+static EventHandler g_radioIRQCB = 0;
+static int g_timerIntervalMillis = 0;
 
 static void watchdogInit()
 {
@@ -139,7 +140,7 @@ void halSetTimerInterval(int msec)
 {
 	halBeginNoInterrupts();
 
-	timerIntervalMillis = msec;
+	g_timerIntervalMillis = msec;
 
 	// Stop the timer, clear interrupt flag
 	TA0CTL &= ~(MC1 | MC0);
@@ -173,7 +174,7 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
 	// READ VOLATILE
 	uint16_t currentMillis = g_timerMillisCounter;
 
-	uint16_t incrementedMillis = currentMillis + timerIntervalMillis;
+	uint16_t incrementedMillis = currentMillis + g_timerIntervalMillis;
 	if (incrementedMillis >= currentMillis)
 	{
 		g_timerMillisCounter = incrementedMillis;
@@ -188,7 +189,17 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
 	LPM3_EXIT;
 }
 
-void halMain(EventHandler* initCB)
+void halSetTimerCallback(TimerHandler cb)
+{
+	g_timerCB = cb;
+}
+
+void halSetRadioIRQCallback(EventHandler cb)
+{
+	g_radioIRQCB = cb;
+}
+
+void halMain(EventHandler initCB)
 {
 	watchdogInit();
 	clockInit();

@@ -4,7 +4,10 @@
 #include <msp430.h>
 #include <stdint.h>
 
-void halMain(EventHandler* initCB);
+typedef void (*EventHandler)(void);
+typedef void (*TimerHandler)(uint16_t deltaMillis);
+
+void halMain(EventHandler initCB);
 
 uint8_t halReadButtons();
 uint8_t halReadDIP();
@@ -16,9 +19,9 @@ uint16_t halReadBatteryVoltage();
 uint8_t halSpiTransfer(uint8_t mosi);
 
 void halSetTimerInterval(int msec);
-void halSetTimerCallback(TimerHandler* cb);
+void halSetTimerCallback(TimerHandler cb);
 
-void halSetRadioIRQCallback(EventHandler* cb);
+void halSetRadioIRQCallback(EventHandler cb);
 
 #define halDelayMicroseconds(usec) _delay_cycles((usec)*8)
 
