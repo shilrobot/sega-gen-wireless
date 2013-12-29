@@ -136,22 +136,6 @@ __interrupt void PORT1_HOOK(void)
     P1IFG = 0;
 }
 
-uint8_t pollButtons()
-{
-    // Turn on pull-up registers
-    P2OUT = 0xFF;
-
-    // Wait 1 usec for port capacitance to charge through pullups
-    halDelayMicroseconds(1);
-
-    // Read keys
-    uint8_t data = P2IN;
-
-    // Change pull-ups to pull-downs
-    P2OUT = 0x00;
-    return ~data;
-}
-
 uint8_t halReadButtons()
 {
     return g_lastButtonsCapture;
@@ -228,7 +212,18 @@ uint8_t halSpiTransfer(uint8_t data)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR_HOOK(void)
 {
-    uint8_t buttons = pollButtons();
+    // Turn on pull-up registers
+    P2OUT = 0xFF;
+
+    // Wait 1 usec for port capacitance to charge through pullups
+    halDelayMicroseconds(1);
+
+    // Read keys
+    uint8_t buttons = ~P2IN;
+
+    // Change pull-ups to pull-downs
+    P2OUT = 0x00;
+
     if (buttons != g_lastButtons)
     {
         g_lastButtons = buttons;
@@ -237,6 +232,7 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
         // note, this doesn't return! it keeps going to the next bit.
     }
 
+    // Handle timer (divided down from key polling interval)
     g_timerDivCounter--;
     if (g_timerDivCounter <= 0)
     {
@@ -293,7 +289,6 @@ void halMain(EventHandler initCB)
     gpioInit();
     spiInit();
     radioInit();
-    g_lastButtons = g_lastButtonsCapture = pollButtons();
 
     (initCB)();
 
