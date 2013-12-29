@@ -8,19 +8,19 @@
 
 #define CYCLES_PER_USEC 8
 
-volatile uint8_t interruptSource = 0;
+volatile uint8_t g_interruptSource = 0;
 
 typedef void (*EventHandler)();
 typedef void (*TimerHandler)(uint16_t delta);
 
-typedef struct
+typedef struct _Task
 {
 	uint16_t intervalMillis;
 	uint16_t millisLeft;
 	EventHandler callback;
 } Task;
 
-typedef struct
+typedef struct _Mode
 {
 	EventHandler onEnter;
 	EventHandler onRadioIRQ;
@@ -192,7 +192,7 @@ __interrupt void PORT1_HOOK(void)
 {
 	if (P1IFG & BIT0)
 	{
-		interruptSource |= INT_SRC_RADIO_IRQ;
+		g_interruptSource |= INT_SRC_RADIO_IRQ;
 		LPM3_EXIT;
 	}
 
@@ -303,15 +303,16 @@ void awakeMode_onEnter()
 
 void awakeMode_pollButtons()
 {
+	P1OUT ^= BIT6;
 	uint8_t buttons = sampleButtons();
-//	if (!buttons)
-//	{
-//		g_nextMode = &g_sleepMode;
-//	}
-	if(buttons)
-		P1OUT |= BIT6;
-	else
-		P1OUT &= ~BIT6;
+	if (!buttons)
+	{
+		g_nextMode = &g_sleepMode;
+	}
+//	if(buttons)
+//		P1OUT |= BIT6;
+//	else
+//		P1OUT &= ~BIT6;
 }
 
 void awakeMode_onRadioIRQ(uint16_t millis)
@@ -337,7 +338,7 @@ void systemInit()
 	g_awakeMode.onRadioIRQ = &awakeMode_onRadioIRQ;
 	g_awakeMode.numTasks = 1;
 	g_awakeMode.tasks = &g_awakeModeTasks[0];
-	g_awakeModeTasks[0].intervalMillis = 2;
+	g_awakeModeTasks[0].intervalMillis = 100;
 	g_awakeModeTasks[0].callback = &awakeMode_pollButtons;
 
 	g_nextMode = &g_sleepMode;
@@ -356,10 +357,10 @@ int main(void)
 	{
 		__disable_interrupt();
 
-		uint8_t interruptSourceCopy = interruptSource;
-		interruptSource = 0;
-		uint16_t deltaMillis = timerMillisCounter;
-		timerMillisCounter = 0;
+		uint8_t interruptSourceCopy = g_interruptSource;
+		g_interruptSource = 0;
+		uint16_t deltaMillis = g_timerMillisCounter;
+		g_timerMillisCounter = 0;
 
 		if (interruptSourceCopy == 0)
 		{

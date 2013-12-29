@@ -3,7 +3,7 @@
 
 #include <msp430.h>
 
-extern volatile uint8_t interruptSource;
+extern volatile uint8_t g_interruptSource;
 
 #define INT_SRC_TIMER		0x1
 #define INT_SRC_RADIO_IRQ	0x2

@@ -9,6 +9,6 @@ void timerSetInterval(int intervalMillis);
 // Timer millisecond counter.
 // Bumped every time the timer fires; saturates at 0xFFFF.
 // To be accessed only when interrupts are disabled.
-extern volatile uint16_t timerMillisCounter;
+extern volatile uint16_t g_timerMillisCounter;
 
 #endif // TIMER_H

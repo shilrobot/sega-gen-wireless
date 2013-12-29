@@ -3,7 +3,7 @@
 #include <msp430.h>
 
 static volatile int timerIntervalMillis = 0;
-volatile uint16_t timerMillisCounter = 0;
+volatile uint16_t g_timerMillisCounter = 0;
 
 void timerSetInterval(int intervalMillis)
 {
@@ -21,7 +21,7 @@ void timerSetInterval(int intervalMillis)
 	TA0CCTL0 = CM_0 | CCIE;
 	TA0CTL = TASSEL_1 | ID_0 | MC_1;
 
-	timerMillisCounter = 0;
+	g_timerMillisCounter = 0;
 
 	END_NO_INTERRUPTS;
 }
@@ -30,19 +30,19 @@ void timerSetInterval(int intervalMillis)
 __interrupt void TIMER0_A0_ISR_HOOK(void)
 {
 	// READ VOLATILE
-	uint16_t currentMillis = timerMillisCounter;
+	uint16_t currentMillis = g_timerMillisCounter;
 
 	uint16_t incrementedMillis = currentMillis + timerIntervalMillis;
 	if (incrementedMillis >= currentMillis)
 	{
-		timerMillisCounter = incrementedMillis;
+		g_timerMillisCounter = incrementedMillis;
 	}
 	else
 	{
 		// WRITE VOLATILE
-		timerMillisCounter = 0xFFFF;
+		g_timerMillisCounter = 0xFFFF;
 	}
 
-	interruptSource |= INT_SRC_TIMER;
+	g_interruptSource |= INT_SRC_TIMER;
 	LPM3_EXIT;
 }
