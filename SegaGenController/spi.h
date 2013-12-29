@@ -1,6 +1,7 @@
-#ifndef RADIOHAL_H
-#define RADIOHAL_H
+#ifndef SPI_H
+#define SPI_H
 
+#include <stdint.h>
 #include <msp430.h>
 
 #define spiBegin() do { P1OUT &= ~BIT3; }while(0)
@@ -8,4 +9,6 @@
 
 uint8_t spiTransfer(uint8_t data);
 
-#endif /* RADIOHAL_H */
+void spiInit();
+
+#endif // SPI_H

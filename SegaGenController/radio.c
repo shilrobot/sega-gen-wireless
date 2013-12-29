@@ -1,7 +1,5 @@
 #include "radio.h"
-#include "radioHAL.h"
-
-volatile int fuck =0;
+#include "spi.h"
 
 uint8_t radioReadRegisterByte(uint8_t reg)
 {
@@ -82,7 +80,6 @@ uint8_t radioGetRXPayloadWidth()
 	spiEnd();
 	return value;
 }
-
 
 void radioWriteTXPayloadNoACK(uint8_t* src, int size)
 {
