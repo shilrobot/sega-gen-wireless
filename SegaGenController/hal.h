@@ -28,12 +28,12 @@ void halSetRadioIRQCallback(EventHandler cb);
 #define halDelayMicroseconds(usec) _delay_cycles((usec)*8)
 
 #define halBeginNoInterrupts() \
-	uint16_t halOldSR = __get_SR_register(); \
-	__disable_interrupt();
+    uint16_t halOldSR = __get_SR_register(); \
+    __disable_interrupt();
 
 #define halEndNoInterrupts() \
-	if (halOldSR & BIT3) { \
-		__enable_interrupt(); \
-	}
+    if (halOldSR & BIT3) { \
+        __enable_interrupt(); \
+    }
 
 #endif /* HAL_H */
