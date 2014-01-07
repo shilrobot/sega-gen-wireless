@@ -54,51 +54,12 @@ void runTasks(uint16_t deltaMillis)
     }
 }
 
-void radioSleep()
-{
-    // Ensure radio is powered down
-    radioWriteRegisterByte(RADIO_REG_CONFIG, 0);
-
-    // Clear all queues
-    radioFlushTX();
-    radioFlushRX();
-    radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
-}
-
-void sleepMode_begin();
-void awakeMode_begin();
-
-int sleepMode_pollButtons()
-{
-    uint8_t buttons = halReadButtons();
-    if (buttons)
-    {
-        awakeMode_begin();
-        return 1;
-    }
-
-    return 0;
-}
-
-void sleepMode_begin()
-{
-    halBeginNoInterrupts();
-
-    radioSleep();
-    halSetTimerInterval(250, 1);
-    halSetRadioIRQCallback(0);
-    clearTasks();
-    addTask(&sleepMode_pollButtons, 250);
-
-    halEndNoInterrupts();
-}
-
 void initCB()
 {
     // NOTE this is called w/ interrupts disabled
 
     halSetTimerCallback(&runTasks);
-    awakeMode_begin();
+    sleepMode_begin();
 }
 
 int main(void)

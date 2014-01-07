@@ -2,6 +2,7 @@
 #include "tasks.h"
 #include "hal.h"
 #include "radio.h"
+#include "sleep.h"
 #include <string.h>
 
 #define AWAKE_STATE_IDLE          0
@@ -18,6 +19,7 @@ typedef struct
     uint8_t receiverButtonStateValid;
     uint8_t state;
     uint8_t consecutiveSendFailures;
+    uint16_t secondsInactive;
 } AwakeState;
 
 static AwakeState g_awakeState;
@@ -111,6 +113,8 @@ static void sendPacket()
 static void awakeMode_onButtonChange()
 {
     g_awakeState.buttonState = halReadButtons();
+
+    g_awakeState.secondsInactive = 0;
 
     if ((g_awakeState.state == AWAKE_STATE_IDLE || g_awakeState.state == AWAKE_STATE_WAIT) &&
         (!g_awakeState.receiverButtonStateValid || g_awakeState.buttonState != g_awakeState.receiverButtonState))
@@ -227,6 +231,20 @@ static int awakeMode_timerTick()
     return 0;
 }
 
+static int awakeMode_inactivityTask()
+{
+    g_awakeState.secondsInactive++;
+
+    // Eventually: 900 (15 minutes)
+    if (g_awakeState.secondsInactive >= 5)
+    {
+        sleepMode_begin();
+        return 1;
+    }
+
+    return 0;
+}
+
 void awakeMode_begin()
 {
     halBeginNoInterrupts();
@@ -242,6 +260,10 @@ void awakeMode_begin()
     halSetButtonChangeCallback(&awakeMode_onButtonChange);
     clearTasks();
     addTask(&awakeMode_timerTick, 10);
+    addTask(&awakeMode_inactivityTask, 1000);
+
+    // We probably came from sleep mode -- send a packet!
+    sendPacket();
 
     halEndNoInterrupts();
 }
