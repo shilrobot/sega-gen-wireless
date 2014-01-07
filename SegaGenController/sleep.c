@@ -27,22 +27,22 @@ static void sleepMode_onButtonChange()
     awakeMode_begin();
 }
 
-static int sleepMode_blah()
-{
-    P1OUT |= BIT6;
-    halDelayMicroseconds(1000);
-    P1OUT &= ~BIT6;
-
-    return 0;
-}
+//static int sleepMode_blah()
+//{
+//    P1OUT |= BIT6;
+//    halDelayMicroseconds(1000);
+//    P1OUT &= ~BIT6;
+//
+//    return 0;
+//}
 
 void sleepMode_begin()
 {
     halBeginNoInterrupts();
 
-    P1OUT &= ~BIT6;
+    //P1OUT &= ~BIT6;
     radioSleep();
-    halSetTimerInterval(100, 1);
+    halSetTimerInterval(20, 1000/20);
     halSetRadioIRQCallback(&sleepMode_onRadioIRQ);
     halSetButtonChangeCallback(&sleepMode_onButtonChange);
     clearTasks();

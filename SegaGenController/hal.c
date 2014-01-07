@@ -1,5 +1,15 @@
 #include "hal.h"
 
+#define LED_ACTIVE
+
+#ifdef LED_ACTIVE
+    #define CPU_AWAKE   do { P1OUT |= BIT6; } while(0)
+    #define CPU_ASLEEP  do { P1OUT &= ~BIT6; } while(0)
+#else
+    #define CPU_AWAKE
+    #define CPU_ASLEEP
+#endif
+
 // Interrupt source (written to by ISRs to wake up main thread)
 #define INT_SRC_BUTTON_CHANGE   0x1
 #define INT_SRC_TIMER           0x2
@@ -129,6 +139,8 @@ static void radioInit()
 #pragma vector=PORT1_VECTOR
 __interrupt void PORT1_HOOK(void)
 {
+    CPU_AWAKE;
+
     if (P1IFG & BIT0)
     {
         g_interruptSource |= INT_SRC_RADIO_IRQ;
@@ -136,6 +148,8 @@ __interrupt void PORT1_HOOK(void)
     }
 
     P1IFG = 0;
+
+    CPU_ASLEEP;
 }
 
 uint8_t halReadButtons()
@@ -214,6 +228,8 @@ uint8_t halSpiTransfer(uint8_t data)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR_HOOK(void)
 {
+    CPU_AWAKE;
+
     // Turn on pull-up registers
     P2OUT = 0xFF;
 
@@ -260,6 +276,8 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
         g_interruptSource |= INT_SRC_TIMER;
         LPM3_EXIT;
     }
+
+    CPU_ASLEEP;
 }
 
 static void nullTimerHandler(uint16_t ignored)
@@ -293,6 +311,8 @@ void halMain(EventHandler initCB)
     gpioInit();
     spiInit();
     radioInit();
+
+    CPU_AWAKE;
 
     (initCB)();
 
@@ -330,10 +350,14 @@ void halMain(EventHandler initCB)
         }
         else
         {
+            CPU_ASLEEP;
+
             // Enter LPM3 with interrupts enabled
             _bis_SR_register(LPM3_bits | GIE);
 
             // ...Woke up from LPM3...
+
+            CPU_AWAKE;
         }
 
         // TODO: ADC complete IRQ, etc.

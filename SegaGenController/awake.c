@@ -96,7 +96,7 @@ static void resendPacket()
     g_awakeState.state = AWAKE_STATE_SENDING;
     g_awakeState.stateMillis = 0;
 
-    P1OUT |= BIT6;
+    //P1OUT |= BIT6;
     g_awakeState.inFlightState = g_awakeState.buttonState;
     uint8_t buf[1] = {g_awakeState.buttonState};
 
@@ -185,7 +185,7 @@ static void awakeMode_onTXSucceeded()
 
 static void awakeMode_onRadioIRQ()
 {
-    P1OUT &= ~BIT6;
+    //P1OUT &= ~BIT6;
     uint8_t status = radioReadStatus();
 
     // Max retransmissions hit (MAX_RT)
@@ -249,7 +249,7 @@ void awakeMode_begin()
 {
     halBeginNoInterrupts();
 
-    P1OUT &= ~BIT6;
+    //P1OUT &= ~BIT6;
     memset(&g_awakeState, 0, sizeof(g_awakeState));
     g_awakeState.buttonState = halReadButtons();
     g_awakeState.state = AWAKE_STATE_IDLE;
