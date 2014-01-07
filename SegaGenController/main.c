@@ -15,16 +15,21 @@ typedef struct _Task
 static unsigned int g_numTasks;
 static Task g_tasks[MAX_TASKS];
 
-#define STATE_IDLE          0
-#define STATE_SENDING       1
-#define STATE_WAIT          2
+#define AWAKE_STATE_IDLE          0
+#define AWAKE_STATE_SENDING       1
+#define AWAKE_STATE_WAIT          2
 
-static uint8_t g_buttonState = 0;
-static uint8_t g_inFlightState = 0;
-static uint8_t g_receiverButtonState = 0;
-static uint8_t g_receiverStateValid = 0;
-static uint8_t g_state = 0;
-static uint8_t g_fails = 0;
+typedef struct
+{
+    uint8_t buttonState;
+    uint8_t inFlightState;
+    uint8_t receiverButtonState;
+    uint8_t receiverButtonStateValid;
+    uint8_t state;
+    uint8_t consecutiveSendFailures;
+} AwakeState;
+
+AwakeState g_awakeState;
 
 static uint16_t g_sends = 0;
 static uint16_t g_acks = 0;
@@ -151,8 +156,8 @@ void sendPacket()
 {
     g_sends++;
     //P1OUT |= BIT6;
-    g_inFlightState = g_buttonState;
-    uint8_t buf[1] = {g_buttonState};
+    g_awakeState.inFlightState = g_awakeState.buttonState;
+    uint8_t buf[1] = {g_awakeState.buttonState};
 
     radioWriteTXPayload(buf, sizeof(buf));
     halPulseRadioCE();
@@ -188,16 +193,16 @@ void sleepMode_begin()
 
 void awakeMode_onButtonChange()
 {
-    g_buttonState = halReadButtons();
+    g_awakeState.buttonState = halReadButtons();
 
-    if (g_state == STATE_IDLE &&
-        (!g_receiverStateValid || g_buttonState != g_receiverButtonState))
+    if (g_awakeState.state == AWAKE_STATE_IDLE &&
+        (!g_awakeState.receiverButtonStateValid || g_awakeState.buttonState != g_awakeState.receiverButtonState))
     {
-        g_state = STATE_SENDING;
+        g_awakeState.state = AWAKE_STATE_SENDING;
         sendPacket();
     }
 
-    if (g_buttonState)
+    if (g_awakeState.buttonState)
     {
         P1OUT |= BIT6;
     }
@@ -235,10 +240,10 @@ void awakeMode_onRadioIRQ()
         // Clear all interrupt bits
         radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 
-        ++g_fails;
+        g_awakeState.consecutiveSendFailures++;
 
         // TODO: Back off if g_fails > some number
-        g_state = STATE_SENDING;
+        g_awakeState.state = AWAKE_STATE_SENDING;
         sendPacket();
     }
     // Sent successfully (TX_DS)
@@ -249,18 +254,18 @@ void awakeMode_onRadioIRQ()
         // Clear all interrupt bits
         radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 
-        g_receiverButtonState = g_inFlightState;
-        g_receiverStateValid = 1;
-        g_fails = 0;
+        g_awakeState.receiverButtonState = g_awakeState.inFlightState;
+        g_awakeState.receiverButtonStateValid = 1;
+        g_awakeState.consecutiveSendFailures = 0;
 
-        if (!g_receiverStateValid || g_buttonState != g_receiverButtonState)
+        if (!g_awakeState.receiverButtonStateValid || g_awakeState.buttonState != g_awakeState.receiverButtonState)
         {
-            g_state = STATE_SENDING;
+            g_awakeState.state = AWAKE_STATE_SENDING;
             sendPacket();
         }
         else
         {
-            g_state = STATE_IDLE;
+            g_awakeState.state = AWAKE_STATE_IDLE;
         }
     }
     else
@@ -273,11 +278,11 @@ void awakeMode_onRadioIRQ()
 
 int awakeMode_invalidateReceiverState()
 {
-    g_receiverStateValid = 0;
+    g_awakeState.receiverButtonStateValid = 0;
 
-    if (g_state == STATE_IDLE)
+    if (g_awakeState.state == AWAKE_STATE_IDLE)
     {
-        g_state = STATE_SENDING;
+        g_awakeState.state = AWAKE_STATE_SENDING;
         sendPacket();
     }
 
@@ -289,12 +294,9 @@ void awakeMode_begin()
     halBeginNoInterrupts();
 
     P1OUT &= ~BIT6;
-    g_buttonState = halReadButtons();
-    g_receiverStateValid = 0;
-    g_receiverButtonState = 0;
-    g_inFlightState = 0;
-    g_state = STATE_IDLE;
-    g_fails = 0;
+    memset(&g_awakeState, 0, sizeof(g_awakeState));
+    g_awakeState.buttonState = halReadButtons();
+    g_awakeState.state = AWAKE_STATE_IDLE;
 
     radioWake();
     halSetTimerInterval(1, 10);
