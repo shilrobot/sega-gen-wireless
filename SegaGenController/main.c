@@ -152,12 +152,6 @@ void radioSleep()
     radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 }
 
-void sendPacket()
-{
-    g_awakeState.consecutiveSendFailures = 0;
-    resendPacket();
-}
-
 void resendPacket()
 {
     g_awakeState.state = AWAKE_STATE_SENDING;
@@ -169,6 +163,12 @@ void resendPacket()
 
     radioWriteTXPayload(buf, sizeof(buf));
     halPulseRadioCE();
+}
+
+void sendPacket()
+{
+    g_awakeState.consecutiveSendFailures = 0;
+    resendPacket();
 }
 
 void sleepMode_begin();
