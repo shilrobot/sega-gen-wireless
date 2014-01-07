@@ -10,6 +10,7 @@ static volatile uint8_t g_interruptSource = 0;
 // Timer configuration
 static int g_timerKeyPollInterval = 0;
 static int g_timerDivider = 0;
+static int g_timerTickInterval = 0;
 
 // Timer tracking
 static int g_timerDivCounter = 0;
@@ -184,6 +185,7 @@ void halSetTimerInterval(int keyPollInterval, int divider)
     g_timerKeyPollInterval = keyPollInterval;
     g_timerDivider = divider;
     g_timerDivCounter = divider;
+    g_timerTickInterval = g_timerKeyPollInterval * divider;
 
     // Stop the timer, clear interrupt flag
     TA0CTL &= ~(MC1 | MC0);
@@ -245,7 +247,7 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
         // READ VOLATILE
         uint16_t currentMillis = g_timerMillisCounter;
 
-        uint16_t incrementedMillis = currentMillis + g_timerKeyPollInterval;
+        uint16_t incrementedMillis = currentMillis + g_timerTickInterval;
         if (incrementedMillis >= currentMillis)
         {
             // WRITE VOLATILE

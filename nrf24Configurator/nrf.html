@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>nRF24L01+ Config Calculator</title>
+
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+
+<style type="text/css">
+
+#regs table {
+
+	border-spacing: 0;
+    border-collapse: collapse;
+}
+
+#regs td {
+	border:1px solid gray;
+	text-align:center;
+	padding:4px;
+}
+
+#regs th {
+	border:1px solid gray;
+	background-color:#E0E0E0;
+}
+
+#regs h2 {
+	font-size:14pt;
+}
+
+.invalid {
+	border-color:red;
+}
+
+td.bit {
+	width:72pt;
+}
+
+td.fieldname {
+	font-size:9pt;
+}
+
+td.alt {
+	background-color:#E0E0E0;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<h1>nRF24L01+ Configuration Calculator</h1>
+<form id="f1">
+</form>
+<hr>
+<div id="regs"></div>
+
+<script src="BinaryBlob.js"></script>
+<script src="nrf.js"></script>
+
+</body>
+</html>

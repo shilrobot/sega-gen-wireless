@@ -15,6 +15,12 @@ typedef struct _Task
 static unsigned int g_numTasks;
 static Task g_tasks[MAX_TASKS];
 
+static uint8_t g_buttonState = 0;
+static uint8_t g_inFlightState = 0;
+static uint8_t g_receiverButtonState = 0;
+static uint8_t g_everSent = 0;
+static uint8_t g_sending = 0;
+
 void clearTasks()
 {
     g_numTasks = 0;
@@ -60,19 +66,19 @@ void radioWake()
     // CONFIG register
     // 7 Reserved       = 0
     // 6 MASK_RX_DR     = 0: enable RX interrupt
-    // 5 MASK_TX_DR     = 0: enable RX interrupt
-    // 4 MASK_MAX_RT    = 0: enable RX interrupt
+    // 5 MASK_TX_DR     = 0: enable TX complete interrupt
+    // 4 MASK_MAX_RT    = 0: enable TX max retries interrupt
     // 3 EN_CRC         = 1: enable CRC
     // 2 CRC0           = 1: 2-byte CRC
     // 1 PWR_UP         = 1: power up
     // 0 PRIM_RX        = 0: primary TX
     radioWriteRegisterByte(RADIO_REG_CONFIG, BIT3 | BIT2 | BIT1);
 
-    // Enable auto ack on pipe 0
-    radioWriteRegisterByte(RADIO_REG_EN_AA, BIT0);
+    // Enable auto ack on pipes 0,1
+    radioWriteRegisterByte(RADIO_REG_EN_AA, BIT1 | BIT0);
 
-    // Enable receive on pipe 0
-    radioWriteRegisterByte(RADIO_REG_EN_RXADDR, BIT0);
+    // Enable receive on pipes 0,1
+    radioWriteRegisterByte(RADIO_REG_EN_RXADDR, BIT1 | BIT0);
 
     // Set address width to 3 bytes
     radioWriteRegisterByte(RADIO_REG_SETUP_AW, 1);
@@ -93,16 +99,18 @@ void radioWake()
     // 0   Obsolete     = 0: (don't care)
     radioWriteRegisterByte(RADIO_REG_RF_SETUP, BIT2 | BIT1);
 
-    uint8_t destAddr[] = {0x12,0x34,0x56};
+    uint8_t destAddr[] = {0xE7, 0xE7, 0xE7};
+    uint8_t srcAddr[] = {0xC2, 0xC2, 0xC2};
 
     // Set TX/RX addresses. We must receive on the address we send to for auto-ACK to work.
-    radioWriteRegister(RADIO_REG_RX_ADDR_P0, destAddr, sizeof(destAddr));
+    radioWriteRegister(RADIO_REG_RX_ADDR_P0, srcAddr, sizeof(srcAddr));
+    radioWriteRegister(RADIO_REG_RX_ADDR_P1, destAddr, sizeof(destAddr));
     radioWriteRegister(RADIO_REG_TX_ADDR, destAddr, sizeof(destAddr));
 
-    radioWriteRegisterByte(RADIO_REG_RX_PW_P0, 32);
+    //radioWriteRegisterByte(RADIO_REG_RX_PW_P0, 32);
 
-    // Enable dynamic payload length on pipe 0
-    radioWriteRegisterByte(RADIO_REG_DYNPD, BIT0);
+    // Enable dynamic payload length on pipes 0,1
+    radioWriteRegisterByte(RADIO_REG_DYNPD, BIT1 | BIT0);
 
     // FEATURE
     // 2 EN_DPL         = 1: Enable dynamic payload length
@@ -133,25 +141,18 @@ void radioSleep()
 
 void sendPacket()
 {
-    uint8_t buf[] = {0xAA};
+    if (g_sending)
+    {
+        return;
+    }
+
+    g_sending = 1;
+    g_inFlightState = g_buttonState;
+    uint8_t buf[1] = {g_buttonState};
 
     radioWriteTXPayload(buf, sizeof(buf));
 
     halPulseRadioCE();
-}
-
-void onRadioIRQ()
-{
-    uint8_t status = radioReadStatus();
-    radioReadRegisterByte(RADIO_REG_OBSERVE_TX);
-
-    if (status & BIT4)
-    {
-        radioFlushTX();
-    }
-
-    // Clear all interrupt bits
-    radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
 }
 
 void sleepMode_begin();
@@ -186,9 +187,14 @@ void sleepMode_begin()
 
 void awakeMode_onButtonChange()
 {
-    uint8_t buttons = halReadButtons();
+    g_buttonState = halReadButtons();
 
-    if(buttons)
+    if (!g_everSent || g_buttonState != g_receiverButtonState)
+    {
+        sendPacket();
+    }
+
+    if(g_buttonState)
     {
         P1OUT |= BIT6;
     }
@@ -200,7 +206,38 @@ void awakeMode_onButtonChange()
 
 void awakeMode_onRadioIRQ()
 {
-    // TODO
+    uint8_t status = radioReadStatus();
+
+    uint8_t reTX = 0;
+
+    // Max retransmissions hit
+    if (status & BIT4)
+    {
+        radioFlushTX();
+        g_sending = 0;
+    }
+    // Sent successfully
+    else if (status & BIT5)
+    {
+        g_everSent = 1;
+        g_receiverButtonState = g_inFlightState;
+        g_sending = 0;
+    }
+
+    // Clear all interrupt bits
+    radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
+
+    if (!g_everSent || g_buttonState != g_receiverButtonState)
+    {
+        sendPacket();
+    }
+}
+
+int awakeMode_sendPacket()
+{
+    sendPacket();
+
+    return 0;
 }
 
 void awakeMode_begin()
@@ -212,7 +249,7 @@ void awakeMode_begin()
     halSetRadioIRQCallback(&awakeMode_onRadioIRQ);
     halSetButtonChangeCallback(&awakeMode_onButtonChange);
     clearTasks();
-    //addTask(&awakeMode_pollButtons, 1);
+    addTask(&awakeMode_sendPacket, 1000);
 
     halEndNoInterrupts();
 }
