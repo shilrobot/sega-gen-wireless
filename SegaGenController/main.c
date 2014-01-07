@@ -15,11 +15,19 @@ typedef struct _Task
 static unsigned int g_numTasks;
 static Task g_tasks[MAX_TASKS];
 
+#define STATE_IDLE          0
+#define STATE_SENDING       1
+#define STATE_WAIT          2
+
 static uint8_t g_buttonState = 0;
 static uint8_t g_inFlightState = 0;
 static uint8_t g_receiverButtonState = 0;
-static uint8_t g_everSent = 0;
-static uint8_t g_sending = 0;
+static uint8_t g_receiverStateValid = 0;
+static uint8_t g_state = 0;
+static uint8_t g_fails = 0;
+
+static uint16_t g_sends = 0;
+static uint16_t g_acks = 0;
 
 void clearTasks()
 {
@@ -103,8 +111,8 @@ void radioWake()
     uint8_t srcAddr[] = {0xC2, 0xC2, 0xC2};
 
     // Set TX/RX addresses. We must receive on the address we send to for auto-ACK to work.
-    radioWriteRegister(RADIO_REG_RX_ADDR_P0, srcAddr, sizeof(srcAddr));
-    radioWriteRegister(RADIO_REG_RX_ADDR_P1, destAddr, sizeof(destAddr));
+    radioWriteRegister(RADIO_REG_RX_ADDR_P0, destAddr, sizeof(destAddr));
+    radioWriteRegister(RADIO_REG_RX_ADDR_P1, srcAddr, sizeof(srcAddr));
     radioWriteRegister(RADIO_REG_TX_ADDR, destAddr, sizeof(destAddr));
 
     //radioWriteRegisterByte(RADIO_REG_RX_PW_P0, 32);
@@ -141,17 +149,12 @@ void radioSleep()
 
 void sendPacket()
 {
-    if (g_sending)
-    {
-        return;
-    }
-
-    g_sending = 1;
+    g_sends++;
+    //P1OUT |= BIT6;
     g_inFlightState = g_buttonState;
     uint8_t buf[1] = {g_buttonState};
 
     radioWriteTXPayload(buf, sizeof(buf));
-
     halPulseRadioCE();
 }
 
@@ -160,8 +163,6 @@ void awakeMode_begin();
 
 int sleepMode_pollButtons()
 {
-    //P1OUT ^= BIT6;
-
     uint8_t buttons = halReadButtons();
     if (buttons)
     {
@@ -189,12 +190,14 @@ void awakeMode_onButtonChange()
 {
     g_buttonState = halReadButtons();
 
-    if (!g_everSent || g_buttonState != g_receiverButtonState)
+    if (g_state == STATE_IDLE &&
+        (!g_receiverStateValid || g_buttonState != g_receiverButtonState))
     {
+        g_state = STATE_SENDING;
         sendPacket();
     }
 
-    if(g_buttonState)
+    if (g_buttonState)
     {
         P1OUT |= BIT6;
     }
@@ -204,38 +207,79 @@ void awakeMode_onButtonChange()
     }
 }
 
+//int awakeMode_toggleState()
+//{
+//    g_buttonState = ~g_buttonState;
+//
+//    if (g_state == STATE_IDLE &&
+//        (!g_receiverStateValid || g_buttonState != g_receiverButtonState))
+//    {
+//        g_state = STATE_SENDING;
+//        sendPacket();
+//    }
+//
+//    return 0;
+//}
+
 void awakeMode_onRadioIRQ()
 {
+    //P1OUT &= ~BIT6;
     uint8_t status = radioReadStatus();
 
-    uint8_t reTX = 0;
-
-    // Max retransmissions hit
+    // Max retransmissions hit (MAX_RT)
     if (status & BIT4)
     {
+        // Flush TX buffer
         radioFlushTX();
-        g_sending = 0;
+
+        // Clear all interrupt bits
+        radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
+
+        ++g_fails;
+
+        // TODO: Back off if g_fails > some number
+        g_state = STATE_SENDING;
+        sendPacket();
     }
-    // Sent successfully
+    // Sent successfully (TX_DS)
     else if (status & BIT5)
     {
-        g_everSent = 1;
+        g_acks++;
+
+        // Clear all interrupt bits
+        radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
+
         g_receiverButtonState = g_inFlightState;
-        g_sending = 0;
+        g_receiverStateValid = 1;
+        g_fails = 0;
+
+        if (!g_receiverStateValid || g_buttonState != g_receiverButtonState)
+        {
+            g_state = STATE_SENDING;
+            sendPacket();
+        }
+        else
+        {
+            g_state = STATE_IDLE;
+        }
     }
-
-    // Clear all interrupt bits
-    radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
-
-    if (!g_everSent || g_buttonState != g_receiverButtonState)
+    else
     {
-        sendPacket();
+        // Some other interrupt (why?)
+        // Clear all interrupt bits
+        radioWriteRegisterByte(RADIO_REG_STATUS, BIT6 | BIT5 | BIT4);
     }
 }
 
-int awakeMode_sendPacket()
+int awakeMode_invalidateReceiverState()
 {
-    sendPacket();
+    g_receiverStateValid = 0;
+
+    if (g_state == STATE_IDLE)
+    {
+        g_state = STATE_SENDING;
+        sendPacket();
+    }
 
     return 0;
 }
@@ -244,12 +288,21 @@ void awakeMode_begin()
 {
     halBeginNoInterrupts();
 
+    P1OUT &= ~BIT6;
+    g_buttonState = halReadButtons();
+    g_receiverStateValid = 0;
+    g_receiverButtonState = 0;
+    g_inFlightState = 0;
+    g_state = STATE_IDLE;
+    g_fails = 0;
+
     radioWake();
     halSetTimerInterval(1, 10);
     halSetRadioIRQCallback(&awakeMode_onRadioIRQ);
     halSetButtonChangeCallback(&awakeMode_onButtonChange);
     clearTasks();
-    addTask(&awakeMode_sendPacket, 1000);
+    addTask(&awakeMode_invalidateReceiverState, 1000);
+    //addTask(&awakeMode_toggleState, 10);
 
     halEndNoInterrupts();
 }
