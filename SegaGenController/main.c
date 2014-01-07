@@ -22,14 +22,14 @@ static Task g_tasks[MAX_TASKS];
 
 typedef struct
 {
+    uint16_t stateMillis;
+    uint16_t waitTime;
     uint8_t buttonState;
     uint8_t inFlightState;
     uint8_t receiverButtonState;
     uint8_t receiverButtonStateValid;
     uint8_t state;
     uint8_t consecutiveSendFailures;
-    uint16_t stateMillis;
-    uint16_t waitTime;
 } AwakeState;
 
 static AwakeState g_awakeState;

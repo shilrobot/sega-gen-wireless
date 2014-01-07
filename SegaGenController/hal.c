@@ -8,7 +8,6 @@
 static volatile uint8_t g_interruptSource = 0;
 
 // Timer configuration
-static int g_timerKeyPollInterval = 0;
 static int g_timerDivider = 0;
 static int g_timerTickInterval = 0;
 
@@ -182,10 +181,9 @@ void halSetTimerInterval(int keyPollInterval, int divider)
 {
     halBeginNoInterrupts();
 
-    g_timerKeyPollInterval = keyPollInterval;
     g_timerDivider = divider;
     g_timerDivCounter = divider;
-    g_timerTickInterval = g_timerKeyPollInterval * divider;
+    g_timerTickInterval = keyPollInterval * divider;
 
     // Stop the timer, clear interrupt flag
     TA0CTL &= ~(MC1 | MC0);
