@@ -22,7 +22,7 @@ typedef struct
 
 static AwakeState g_awakeState;
 
-void radioWake()
+static void radioWake()
 {
     // CONFIG register
     // 7 Reserved       = 0
@@ -89,7 +89,7 @@ void radioWake()
     halDelayMicroseconds(5000UL);
 }
 
-void resendPacket()
+static void resendPacket()
 {
     g_awakeState.state = AWAKE_STATE_SENDING;
     g_awakeState.stateMillis = 0;
@@ -102,13 +102,13 @@ void resendPacket()
     halPulseRadioCE();
 }
 
-void sendPacket()
+static void sendPacket()
 {
     g_awakeState.consecutiveSendFailures = 0;
     resendPacket();
 }
 
-void awakeMode_onButtonChange()
+static void awakeMode_onButtonChange()
 {
     g_awakeState.buttonState = halReadButtons();
 
@@ -128,7 +128,7 @@ void awakeMode_onButtonChange()
 //    }
 }
 
-void awakeMode_onTXFailed()
+static void awakeMode_onTXFailed()
 {
     // We don't know what the receiver's state is because it may
     // have received the packet but lost the ACK.
@@ -163,7 +163,7 @@ void awakeMode_onTXFailed()
     }
 }
 
-void awakeMode_onTXSucceeded()
+static void awakeMode_onTXSucceeded()
 {
     g_awakeState.receiverButtonState = g_awakeState.inFlightState;
     g_awakeState.receiverButtonStateValid = 1;
@@ -179,7 +179,7 @@ void awakeMode_onTXSucceeded()
     }
 }
 
-void awakeMode_onRadioIRQ()
+static void awakeMode_onRadioIRQ()
 {
     P1OUT &= ~BIT6;
     uint8_t status = radioReadStatus();
@@ -211,7 +211,7 @@ void awakeMode_onRadioIRQ()
     }
 }
 
-int awakeMode_timerTick()
+static int awakeMode_timerTick()
 {
     g_awakeState.stateMillis += 10;
 
