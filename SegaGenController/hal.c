@@ -79,7 +79,7 @@ static void gpioInit()
 
     // Port 1
     // P1.0: IRQ: Input; interrupt on falling edge
-    // P1.1: MISO: Input (P1SEL & P1SEL2 set) - SPI
+    // P1.1: MISO: Input (P1SEL & P1SEL2 set) - SPI; pull-up enabled
     // P1.2: MOSI: Output (P1SEL & P1SEL2 set) - SPI
     // P1.3: CSN: Output, initially HIGH
     // P1.4: SCK: Output (P1SEL & P1SEL2 set) - SPI
@@ -87,11 +87,12 @@ static void gpioInit()
     // P1.6: Green LED: Output
     // P1.7: Unused: Output, initially LOW
     P1DIR = BIT3 | BIT5 | BIT6 | BIT7;
-    P1OUT = BIT3 | BIT6;
+    P1OUT = BIT1 | BIT3 | BIT6;
     P1SEL = BIT1 | BIT2 | BIT4;
     P1SEL2 = BIT1 | BIT2 | BIT4;
     P1IE = BIT0;
     P1IES = BIT0;
+    P1REN = BIT1;
 
     // Port 2: Gamepad buttons
     // Initially all inputs, with pulldowns enabled.
