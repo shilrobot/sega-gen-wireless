@@ -1,10 +1,10 @@
 #include "hal.h"
 
-#define LED_ACTIVE
+//#define LED_ACTIVE
 
 #ifdef LED_ACTIVE
-    #define CPU_AWAKE   do { P1OUT |= BIT6; } while(0)
-    #define CPU_ASLEEP  do { P1OUT &= ~BIT6; } while(0)
+    #define CPU_AWAKE   halLedOn()
+    #define CPU_ASLEEP  halLedOff()
 #else
     #define CPU_AWAKE
     #define CPU_ASLEEP
@@ -84,10 +84,19 @@ static void gpioInit()
     // P1.3: CSN: Output, initially HIGH
     // P1.4: SCK: Output (P1SEL & P1SEL2 set) - SPI
     // P1.5: CE: Output, initially LOW
+    // On LAUNCHPAD:
     // P1.6: Green LED: Output
     // P1.7: Unused: Output, initially LOW
+    // On BOARD:
+    // P1.6: Output: ADC enable, initial LOW
+    // P1.7: ADC in (input); for now just input
+#ifdef HAL_IS_LAUNCHPAD
     P1DIR = BIT3 | BIT5 | BIT6 | BIT7;
     P1OUT = BIT1 | BIT3 | BIT6;
+#else
+    P1DIR = BIT3 | BIT5 | BIT6;
+    P1OUT = BIT1 | BIT3;
+#endif
     P1SEL = BIT1 | BIT2 | BIT4;
     P1SEL2 = BIT1 | BIT2 | BIT4;
     P1IE = BIT0;
@@ -237,22 +246,9 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
     // Wait 2 usec for port capacitance to charge through pullups
     // (6 us will do fine. This gives us a lot of margin, without
     // taking TOO much extra time.)
-    halDelayMicroseconds(2);
+    halDelayMicroseconds(6);
 
-    // Read keys
-    uint8_t buttons = ~P2IN;
-
-    // Change pull-ups to pull-downs
-    P2OUT = 0x00;
-
-    if (buttons != g_lastButtons)
-    {
-        g_lastButtons = buttons;
-        g_interruptSource |= INT_SRC_BUTTON_CHANGE;
-        LPM3_EXIT;
-        // note, this doesn't return! it keeps going to the next bit.
-    }
-
+    // Now, do some more work (this gives us extra charge time for free)
     // Handle timer (divided down from key polling interval)
     g_timerDivCounter--;
     if (g_timerDivCounter <= 0)
@@ -276,6 +272,20 @@ __interrupt void TIMER0_A0_ISR_HOOK(void)
 
         g_interruptSource |= INT_SRC_TIMER;
         LPM3_EXIT;
+    }
+
+    // Read keys
+    uint8_t buttons = ~P2IN;
+
+    // Change pull-ups to pull-downs
+    P2OUT = 0x00;
+
+    if (buttons != g_lastButtons)
+    {
+        g_lastButtons = buttons;
+        g_interruptSource |= INT_SRC_BUTTON_CHANGE;
+        LPM3_EXIT;
+        // note, this doesn't return! it keeps going to the next bit.
     }
 
     CPU_ASLEEP;

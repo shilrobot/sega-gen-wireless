@@ -40,4 +40,14 @@ void halSetRadioIRQCallback(EventHandler cb);
         __enable_interrupt(); \
     }
 
+//#define HAL_IS_LAUNCHPAD
+
+#ifdef HAL_IS_LAUNCHPAD
+    #define halLedOn() do { P1OUT |= BIT6; } while(0)
+    #define halLedOff() do { P1OUT &= ~BIT6; } while(0)
+#else
+    #define halLedOn() do { P3OUT |= BIT2; } while(0)
+    #define halLedOff() do { P3OUT &= ~BIT2; } while(0)
+#endif
+
 #endif /* HAL_H */

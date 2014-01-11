@@ -97,6 +97,7 @@ static void resendPacket()
     g_awakeState.stateMillis = 0;
 
     //P1OUT |= BIT6;
+    halLedOn();
     g_awakeState.inFlightState = g_awakeState.buttonState;
     uint8_t buf[1] = {g_awakeState.buttonState};
 
@@ -186,6 +187,7 @@ static void awakeMode_onTXSucceeded()
 static void awakeMode_onRadioIRQ()
 {
     //P1OUT &= ~BIT6;
+    halLedOff();
     uint8_t status = radioReadStatus();
 
     // Max retransmissions hit (MAX_RT)
