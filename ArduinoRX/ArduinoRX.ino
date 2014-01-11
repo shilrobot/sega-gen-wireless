@@ -83,8 +83,6 @@ void radioSetup()
   digitalWrite(PIN_CE, HIGH);
 }
 
-#define PIN_LED 2
-
 void setup()
 {
   digitalWrite(PIN_CE, LOW);

@@ -11,6 +11,7 @@
 #define PIN_MOSI 11
 #define PIN_MISO 12
 #define PIN_SCK 13
+#define PIN_LED 2
 
 #define halSpiBegin() do { SPI.begin(); digitalWrite(PIN_CSN, LOW); } while(0)
 #define halSpiEnd() do { SPI.end(); digitalWrite(PIN_CSN, HIGH); } while(0)
